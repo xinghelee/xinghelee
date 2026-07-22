@@ -1,7 +1,12 @@
-### fxfyio
+I build small, focused tools — most of what's pinned here is something I use every day.
 
-I build small focused tools across the stack — homelab dashboards, personal finance, iOS internals, dev tooling. Most of what's pinned below is something I use every day.
+**Current projects**
 
-`TypeScript` · `React` · `Bun` · `Swift` · `Python` · `Docker`
+- [DockerView](https://github.com/xinghelee/DockerView) — editorial-style index page for your homelab, auto-discovers Docker services
+- [2Subly](https://github.com/xinghelee/2Subly) — self-hosted subscription tracker with multi-currency reports
+- [EmotionalLedger](https://github.com/xinghelee/EmotionalLedger) — iOS journaling app, in progress
+- [obstime](https://github.com/xinghelee/obstime) — customizable time overlay for OBS
 
-<sub>独立开发者 · 造自己想用的东西</sub>
+`Swift` · `TypeScript` · `React` · `Python` · `Docker`
+
+🌐 [xinghelee.com](https://xinghelee.com)
