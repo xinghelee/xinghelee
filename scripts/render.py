@@ -70,6 +70,25 @@ def adv(s):
     return sum(2 if ord(c) > 0x2E80 else 1 for c in s)
 
 
+def shade(hex_color, k):
+    """把颜色按系数 k 提亮/压暗，用来区分等距方块的三个面。"""
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    f = lambda v: max(0, min(255, round(v * k)))
+    return f"#{f(r):02x}{f(g):02x}{f(b):02x}"
+
+
+# 等距投影的网格步长，接近标准 2:1。
+#
+# 第一版用了 18×6 的扁投影，想着能压低整张图的高度 —— 结果 7 天的进深只剩
+# 18px，整块贡献图糊成一条细斜带，完全看不出是个网格。等距投影里 y 方向的
+# 进深就是靠 TH 撑的，压扁 TH 等于把第二个维度抹掉。
+TW, TH = 26, 11
+TILE = 0.86         # 实际方块比网格步长小一点，留出格缝
+BAR_MAX = 52        # 贡献最多那天的柱高
+BAR_MIN = 4         # 有贡献就至少冒头，否则和空地分不出来
+
+
 THEMES = {
     "dark": dict(
         chrome="#2b2f36", bar="#22262c", body="#0f1216", text="#c9d1d9",
@@ -120,7 +139,8 @@ def build(data, theme_name):
     rows = [r for r in rows if not (r[0] == "out" and not r[1])]
 
     # 先算总高：贡献图那行占的高度和文字行不一样
-    GRAPH_H = 7 * 11 + 10
+    # 等距图的高度 = 纵向铺开的深度 + 最高的柱子 + 上下留白
+    GRAPH_H = int((52 + 6) * TH / 2 + BAR_MAX + TH + 8)
     y = BAR + PAD
     plan = []
     for kind, payload in rows:
@@ -184,25 +204,57 @@ def build(data, theme_name):
             )
             delay += 0.11
         elif kind == "graph":
-            cell, gap = 9, 2
-            gx, gy = PAD, ly - FS + 2
-            cells = []
-            mx = max((d["contributionCount"] for w in payload for d in w["contributionDays"]), default=1) or 1
-            for wi, wk in enumerate(payload):
-                for d in wk["contributionDays"]:
-                    di = (date.fromisoformat(d["date"]).weekday() + 1) % 7
-                    c = d["contributionCount"]
-                    if c == 0:
-                        col = t["empty"]
-                    else:
-                        q = min(3, int(c / mx * 4)) if mx > 3 else min(3, c - 1)
-                        col = t["scale"][max(0, q)]
-                    cells.append(
-                        f'<rect x="{gx+wi*(cell+gap)}" y="{gy+di*(cell+gap)}" '
-                        f'width="{cell}" height="{cell}" rx="2" fill="{col}"/>'
-                    )
-            body.append(f'<g opacity="0">{appear(0.5)}{"".join(cells)}</g>')
-            delay += 0.45
+            # 等距（isometric）贡献图。自己画而不是调 github-profile-3d-contrib：
+            # 那个 Action 产出的是一整张独立 SVG，塞不进终端窗口，配色也另成一套。
+            days = [(wi, (date.fromisoformat(d["date"]).weekday() + 1) % 7,
+                     d["contributionCount"])
+                    for wi, wk in enumerate(payload)
+                    for d in wk["contributionDays"]]
+            mx = max((c for _, _, c in days), default=1) or 1
+
+            # 原点：把整块图水平居中。x 的最小值出现在 col=0,row=6 处。
+            span = (len(payload) - 1 + 6) * TW / 2
+            ox = PAD + 6 * TW / 2 + (W - 2 * PAD - span - TW) / 2
+            oy = ly - FS + BAR_MAX + 8
+
+            # 画家算法：(col+row) 越大越靠近观察者，必须后画才能正确遮挡。
+            cols = {}
+            for col, row, c in sorted(days, key=lambda d: d[0] + d[1]):
+                cx = ox + (col - row) * TW / 2
+                cy = oy + (col + row) * TH / 2
+                h = 0 if c == 0 else BAR_MIN + (c / mx) * (BAR_MAX - BAR_MIN)
+                if c == 0:
+                    base = t["empty"]
+                else:
+                    q = min(3, int(c / mx * 4)) if mx > 3 else min(3, c - 1)
+                    base = t["scale"][max(0, q)]
+
+                hw, hh = TW / 2 * TILE, TH / 2 * TILE
+                top = (f'{cx},{cy-h-hh} {cx+hw},{cy-h} '
+                       f'{cx},{cy-h+hh} {cx-hw},{cy-h}')
+                piece = [f'<polygon points="{top}" fill="{shade(base,1.0)}"/>']
+                if h > 0:
+                    left = (f'{cx-hw},{cy-h} {cx},{cy-h+hh} '
+                            f'{cx},{cy+hh} {cx-hw},{cy}')
+                    right = (f'{cx+hw},{cy-h} {cx},{cy-h+hh} '
+                             f'{cx},{cy+hh} {cx+hw},{cy}')
+                    # 左面压暗、右面更暗，靠明度差把体积感做出来
+                    piece.append(f'<polygon points="{left}" fill="{shade(base,0.72)}"/>')
+                    piece.append(f'<polygon points="{right}" fill="{shade(base,0.5)}"/>')
+                cols.setdefault(col, []).append("".join(piece))
+
+            # 按周分组逐列亮起，像城市天际线一格一格点亮
+            weeks_svg = []
+            n_cols = len(cols)
+            for ci, col in enumerate(sorted(cols)):
+                d0 = delay + ci * (0.9 / max(1, n_cols))
+                weeks_svg.append(
+                    f'<g opacity="0">'
+                    f'<animate attributeName="opacity" from="0" to="1" dur="0.35s" '
+                    f'begin="{d0:.2f}s" fill="freeze"/>{"".join(cols[col])}</g>'
+                )
+            body.append("".join(weeks_svg))
+            delay += 1.15
         elif kind == "out":
             body.append(
                 f'<text x="{PAD}" y="{ly}" class="mono" opacity="0" '
