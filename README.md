@@ -1,4 +1,10 @@
-I build small, focused tools — most of what's pinned here is something I use every day.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./terminal-dark.svg">
+  <img alt="xinghelee — terminal" src="./terminal-light.svg" width="900">
+</picture>
 
+<sub>
 
-`Swift` · `TypeScript` · `React` · `Python` · `Docker`
+[xinghelee.com](https://xinghelee.com) · 这张图每天由 [Actions](.github/workflows/update-profile.yml) 用真实数据重画
+
+</sub>
